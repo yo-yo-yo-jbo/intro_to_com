@@ -214,3 +214,45 @@ With an out-of-process server, things become more interesting.
 Rather than loading the implementation directly, COM may need to launch an executable or communicate with an existing process.  
 The activation infrastructure, including the RPCSS/DCOM service infrastructure, helps resolve the class and arrange a connection to the server.  
 Registration can happen through common APIs such as [CoRegisterClassObject](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coregisterclassobject), and once the server is ready, COM can marshal the requested interface back to the client. At that point, the client would generally receive a proxy representing the remote object, rather than a direct pointer to its implementation.
+
+### AppIDs
+A `CLSID` identifies a COM class, while an `AppID` groups configuration associated with a COM server application.  
+AppID configuration may specify:  
+- Server identity and activation behavior.
+- Launch and activation permissions.
+- Access permissions.
+- DLL surrogate configuration.
+- Authentication settings.
+
+Understanding a COM server therefore frequently requires examining both its `CLSID` registration and the associated `AppID`.
+
+## COM and the registry
+When we examine COM registration, we typically look under `HKEY_CLASSES_ROOT\CLSID` in the [Windows Registry](https://en.wikipedia.org/wiki/Windows_Registry).  
+However, `HKEY_CLASSES_ROOT` (`HKCR` for short) is not a standalone registry hive, but it's a **merge result** of two registry locations:  
+- `HKEY_CURRENT_USER\Software\Classes`
+- `HKEY_LOCAL_MACHINE\Software\Classes`
+
+The machine-wide registration exists under `HKLM`, while the user-specific registration exists under `HKCU`. Note that this also means every user has its own (perhaps unique) `HKCR`, due to being affected by `HKCU` (which is really a link to some user SID under `HKU`).  
+Also note that the order matters - per-user registrations generally **take precedence** over machine-wide registrations when the same entry exists in both locations.  
+This is intentional, as `HKLM` registrations form a "baseline" in which each user can deviate from, but it also creates security issues, especially since generally high privileges are not required to write arbitrary keys and data under `HKCU` (unlike `HKLM` writes).  
+Let's take an example - suppose we have a class registered as:  
+```
+HKLM\Software\Classes\CLSID\
+  {11111111-1111-1111-1111-111111111111}
+    InprocServer32
+      (Default) = C:\Program Files\Example\server.dll
+```
+
+Now suppose the following registry write (notice it's under `HKCU`!):  
+```
+HKCU\Software\Classes\CLSID\
+  {11111111-1111-1111-1111-111111111111}
+    InprocServer32
+      (Default) = C:\Users\mal\malicious.dll
+```
+
+When activating `CLSID` of `{11111111-1111-1111-1111-111111111111}` under the current user, `malicious.dll` will be loaded!  
+This can be used for various malicious purposes:
+- Persistence: if that COM class is being used when the user logs in (e.g. by `explorer.exe`), then `malicious.dll` persists and runs after reboots.
+- DLL injection: any program that activates that COM class and runs under the user - will have `malicious.dll` injected into it.
+- Some forms of [UAC bypasses](https://github.com/yo-yo-yo-jbo/uac_bypasses/): if the user is an admin (but not elevated), then any elevated program that runs under it and activates that COM class would effectively bypass UAC, as `malicious.dll` can run arbitrary code without a UAC prompt.
