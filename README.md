@@ -196,3 +196,21 @@ HKEY_CLASSES_ROOT
 ```
 
 Note, as I mentioned, that an out-of-process COM server can live happily in its own executable too.
+
+### In-process activation
+When a client calls [CoCreateInstance](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance) requesting an in-process server, COM generally performs the following operations:
+1. Resolves the `CLSID` to determine the server implementing the class.
+2. Locates the corresponding DLL.
+3. Loads the DLL into the calling process if necessary.
+4. Obtains its [DllGetClassObject](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-dllgetclassobject) export (this is a traditional DLL export, not a COM interface).
+5. Retrieves an [IClassFactory](https://learn.microsoft.com/en-us/windows/win32/api/unknwnbase/nn-unknwnbase-iclassfactory) (there's a well-known `IID_IClassFactory` for it).
+6. Invokes [IClassFactory::CreateInstance](https://learn.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iclassfactory-createinstance).
+7. Returns the requested interface to the caller.
+
+Note the class factory - COM separates locating a class from constructing an instance of that class.
+
+### Out-of-process activation
+With an out-of-process server, things become more interesting.  
+Rather than loading the implementation directly, COM may need to launch an executable or communicate with an existing process.  
+The activation infrastructure, including the RPCSS/DCOM service infrastructure, helps resolve the class and arrange a connection to the server.  
+Registration can happen through common APIs such as [CoRegisterClassObject](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coregisterclassobject), and once the server is ready, COM can marshal the requested interface back to the client. At that point, the client would generally receive a proxy representing the remote object, rather than a direct pointer to its implementation.
