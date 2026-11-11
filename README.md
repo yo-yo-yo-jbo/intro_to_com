@@ -117,7 +117,7 @@ Note the relatively straightforward implementation: we have a pointer to an inte
 COM therefore does not require a particular source language, only agreement on the binary layout of an interface.  
 Security remark: we will mostly be focusing here on `QueryInterface`, but there are interesting use-after-free vulnerabilities in case someone forgets to call `AddRef` or has assumptions about the reference count of the object (e.g. if someone can call `Release` from some functionality in another exported function). I will not be discussing that today, but ref-counting miscalculations leading to use-after-free are very common scenarios.
 
-### Interacting with COM
+### GUIDs
 COM relies heavily on [globally unique identifiers (GUIDs)](https://en.wikipedia.org/wiki/Universally_unique_identifier).  
 Two identifiers are particularly important:
 - **CLSID (Class Identifier)**: Identifies a COM class, effectively describing which component should be instantiated.
