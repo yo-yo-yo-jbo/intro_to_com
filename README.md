@@ -89,9 +89,13 @@ Look at offset `0x11f6` and the code after it - I've added remarks inline:
 
 Now imagine our amazing `Animal` class should be exported as a dynamic library - both sides would now have to agree to an **interface** - for instance, that `makeSound` is `virtual`, that the destructor is `virtual` - and more than that - that the order, parameter list etc. all match perfectly - otherwise we'd end up with weird crashes or worse.
 
-That is the main motivation behind COM, and is not just a C++ problem - it exists in C too (and in fact, in any system that has any sort of dynamic library code execution).  
-Instead of exposing implementation-specific C++ classes, COM components expose interfaces: collections of methods with well-defined signatures and calling conventions.  
-Every COM interface ultimately derives from IUnknown, which defines three methods:  
+That is the main motivation behind COM, and is not just a C++ problem - it exists in C too (and in fact, in any system that has any sort of dynamic library code execution).
+
+## COM fundementals
+Instead of exposing implementation-specific C++ classes, COM components expose interfaces: collections of methods with well-defined signatures and calling conventions.
+
+### IUnknown
+Every COM interface ultimately derives from a base class called `IUnknown`, which defines three methods:  
 
 ```c++
 struct IUnknown {
@@ -109,4 +113,45 @@ These methods serve three fundamental purposes:
 - `AddRef` increments the reference count.
 - `Release` decrements the reference count, allowing an object to be destroyed when no longer referenced.
 
-Note that there are interesting use-after-free vulnerabilities in case someone forgets to call `AddRef`. These cases also include cases where someone can call `Release` from some functionality in another exported function - I will not be discussing that today, but ref-counting miscalculations leading to use-after-free are very common scenarios.
+Note the relatively straightforward implementation: we have a pointer to an interface (`IUnknown`) whose first pointer points to a table of function pointers (`QueryInterface`).
+COM therefore does not require a particular source language, only agreement on the binary layout of an interface.  
+Security remark: we will mostly be focusing here on `QueryInterface`, but there are interesting use-after-free vulnerabilities in case someone forgets to call `AddRef` or has assumptions about the reference count of the object (e.g. if someone can call `Release` from some functionality in another exported function). I will not be discussing that today, but ref-counting miscalculations leading to use-after-free are very common scenarios.
+
+### Interacting with COM
+COM relies heavily on [globally unique identifiers (GUIDs)](https://en.wikipedia.org/wiki/Universally_unique_identifier).  
+Two identifiers are particularly important:
+- **CLSID (Class Identifier)**: Identifies a COM class, effectively describing which component should be instantiated.
+- **IID (Interface Identifier)**: Identifies a particular interface implemented by a COM object.
+
+A single COM class can implement multiple interfaces, and an interface can be implemented by multiple COM classes.  
+A client generally requests an object by its `CLSID` but interacts with it through one or more `IIDs`.  
+For example:
+
+```c++
+HRESULT hr = CoCreateInstance(
+    CLSID_Example,
+    nullptr,
+    CLSCTX_INPROC_SERVER,
+    IID_IExample,
+    reinterpret_cast<void**>(&obj)
+);
+```
+
+Here, `CLSID_Example` identifies the class to instantiate, while `IID_IExample` identifies the interface we want to receive.  
+If the `HRESULT` indicates a success, `obj` is expected to be populated, and because we know it inherits from `IUnknown` - we'd also be able to call those three methods on it.  
+I purposely skipped explaining the `CLSCTX_INPROC_SERVER` argument, but it deserves special attention - it determines where the implementation is allowed to execute.  
+COM supports several execution contexts:
+
+| Execution context    | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| CLSCTX_INPROC_SERVER | DLL hosted inside the calling process                     |
+| CLSCTX_LOCAL_SERVER  | A server executing in another process on the same machine |
+| CLSCTX_REMOTE_SERVER | A server executing on another machine                     |
+| CLSCTX_ALL           | Allows COM to select among supported contexts             |
+
+### In-process COM servers
+An in-process COM server is typically implemented as a DLL.  
+When an application activates an in-process COM object, Windows loads the DLL into the application's address space. Its implementation therefore executes as part of the calling process.  
+Because the implementation shares the same address space, calls can often be dispatched directly through the COM interface's `vtable`.
+This makes in-process COM relatively efficient, but it also means the DLL executes with the privileges of the hosting process - it doesn't have an independent security identity or access token.
+Therefore, a malicious or compromised in-process COM server is effectively malicious code executing within its client's process. This becomes particularly interesting when discussing [COM hijacking](https://attack.mitre.org/techniques/T1546/015/).
