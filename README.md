@@ -319,3 +319,41 @@ A privileged server performing sensitive operations under its own identity must 
 This becomes especially important when examining elevated COM objects.
 
 ## Elevated COM objects
+Normally, when an application running with a medium-integrity token needs administrator privileges, Windows uses [User Account Control (UAC)](https://en.wikipedia.org/wiki/User_Account_Control) to arrange elevation.  
+COM provides a mechanism for elevating an individual server without elevating the entire client application, and that mechanism is called the **COM elevation moniker**.  
+Instead of starting the entire application with administrator privileges, a medium-integrity process can request that a particular COM class be activated with an elevated token.  
+COM recognizes moniker syntax such as `Elevation:Administrator!new:{CLSID}`. There's also another supported form: `Elevation:Highest!new:{CLSID}`.  
+A client can use CoGetObject to bind to such a moniker:  
+
+```c++
+HRESULT hrResult = E_UNEXPECTED;
+BIND_OPTS3 tOpts = { 0 };
+
+tOpts.cbStruct = sizeof(opts);
+tOpts.dwClassContext = CLSCTX_LOCAL_SERVER;
+
+hr = CoGetObject(
+    L"Elevation:Administrator!new:"
+    L"{11111111-1111-1111-1111-111111111111}",
+    &tOpts,
+    IID_IUnknown,
+    reinterpret_cast<void**>(&obj)
+);
+```
+
+The caller must initialize COM, and the selected class must support elevation. Also notice the use of `CLSCTX_LOCAL_SERVER` - elevating an in-process DLL inside the calling process would not provide the intended privilege separation, so, an elevated COM component must execute out of process.  
+One other important note is that a COM class cannot arbitrarily request elevation simply because the client uses an elevation moniker. Instead, the class must explicitly support elevation. This is done declaratively in the registry, e.g.:
+
+```
+HKLM\Software\Classes\CLSID\{CLSID}
+    LocalizedString = ...
+
+    Elevation
+        Enabled = 1
+```
+
+The `LocalizedString` value is the string that represents the text for the elevation UI, and `Elevation\Enabled` specifies that the class supports the elevation mechanism.  
+Also, note the COM class must be registered under `HKLM` - this does not work under normal `HKCU` registrations, for obvious security reasons.  
+Once the server is instantiated and passes all the UAC checks (and potentially, prompts) - the client can stay in a Medium integrity level, while the server can run in High integrity level, intercept requests and act on the client's behalf.  
+As I previously mentioned - while this architecture allows for a great separation of functionality (only the things that need to run privileged - run privileged) - it's also an opportunity for various security issues.
+
