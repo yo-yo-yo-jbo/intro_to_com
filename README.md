@@ -255,4 +255,27 @@ When activating `CLSID` of `{11111111-1111-1111-1111-111111111111}` under the cu
 This can be used for various malicious purposes:
 - Persistence: if that COM class is being used when the user logs in (e.g. by `explorer.exe`), then `malicious.dll` persists and runs after reboots.
 - DLL injection: any program that activates that COM class and runs under the user - will have `malicious.dll` injected into it.
-- Some forms of [UAC bypasses](https://github.com/yo-yo-yo-jbo/uac_bypasses/): if the user is an admin (but not elevated), then any elevated program that runs under it and activates that COM class would effectively bypass UAC, as `malicious.dll` can run arbitrary code without a UAC prompt.
+
+Note, however, that processes elevated through UAC do not normally use the per-user COM class registrations for COM activation - Microsoft explicitly documents that such processes use the machine-wide registration instead. This protection prevents the simplistic attack of overriding an elevated COM server's class registration in `HKCU` and expecting elevated COM activation to load an arbitrary user-controlled DLL.
+
+## Marshaling, Proxies and Apartments
+So far, we've treated out-of-process communication as a straightforward RPC mechanism.  
+COM introduces an additional layer of complexity through its `apartment` model.  
+Every thread using COM must initialize it, typically using [CoInitializeEx](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex), e.g.:  
+```c
+CoInitializeEx(MULL, COINIT_MULTITHREADED);
+```
+
+This initializes the thread for the **multithreaded apartment (MTA)**.  
+Alternatively, `COINIT_APARTMENTTHREADED` initializes a **single-threaded apartment (STA)**.  
+- An STA generally relies on a message loop to dispatch incoming calls.
+- An MTA permits objects to receive calls from different threads, subject to their synchronization requirements.
+
+That's quite interesting, since even objects **within the same process** might require marshaling when communicating across apartment boundaries (e.g. SLA to MTA).  
+When a COM interface crosses an apartment or process boundary, the caller generally receives a proxy, while COM uses the corresponding marshaling machinery to dispatch calls to the object. Depending on the interface, this can involve type-library-based marshaling, generated proxy/stub code, or custom marshaling implementations.  
+For vulnerability researchers, these mechanisms introduce several areas worth examining:
+- Serialization and deserialization of attacker-controlled arguments.
+- Incorrect assumptions about interface or object lifetimes.
+- Reentrancy during cross-apartment calls.
+- Incorrect validation of data crossing process boundaries.
+- Vulnerabilities in custom marshaling implementations.
