@@ -155,3 +155,11 @@ When an application activates an in-process COM object, Windows loads the DLL in
 Because the implementation shares the same address space, calls can often be dispatched directly through the COM interface's `vtable`.
 This makes in-process COM relatively efficient, but it also means the DLL executes with the privileges of the hosting process - it doesn't have an independent security identity or access token.
 Therefore, a malicious or compromised in-process COM server is effectively malicious code executing within its client's process. This becomes particularly interesting when discussing [COM hijacking](https://attack.mitre.org/techniques/T1546/015/).
+
+### Out-of-process COM servers
+An out-of-process COM server, also sometimes referred to as a "local server", executes in a separate process.  
+Instead of loading a DLL into the client, COM activates or connects to a server process and provides the client with an interface through which it can communicate with the server.  
+From the client's perspective, invoking a method might still look like an ordinary C++ method call, but internally, the call can involve argument marshaling, interprocess communication, dispatching the request in the server process, and marshaling the results back to the client.  
+On Windows, local COM communication is built on [RPC](https://en.wikipedia.org/wiki/Remote_procedure_call) infrastructure, commonly using local RPC transport mechanisms backed by [ALPC](https://en.wikipedia.org/wiki/Local_Inter-Process_Communication).  
+Crucially, **the server is not required to execute with the same privileges as its caller** - its security context is determined by how the server was launched or configured, including its process identity and activation settings.  
+For example, a COM server running as SYSTEM, might be accessible to a client running as a standard user, provided the relevant permissions allow it. Of course, this is very interesting from a security research perspective - IPC were always a weak link, and if the server does not validate the client well and performs sensitive operations on its behalf, the results could be quite bad (e.g. a local privilege escalation vulnerability).
