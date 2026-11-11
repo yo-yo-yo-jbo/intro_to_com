@@ -332,12 +332,12 @@ BIND_OPTS3 tOpts = { 0 };
 tOpts.cbStruct = sizeof(opts);
 tOpts.dwClassContext = CLSCTX_LOCAL_SERVER;
 
-hr = CoGetObject(
+hrResult = CoGetObject(
     L"Elevation:Administrator!new:"
     L"{11111111-1111-1111-1111-111111111111}",
     &tOpts,
     IID_IUnknown,
-    reinterpret_cast<void**>(&obj)
+    reinterpret_cast<void**>(&ppvObj)
 );
 ```
 
@@ -357,3 +357,17 @@ Also, note the COM class must be registered under `HKLM` - this does not work un
 Once the server is instantiated and passes all the UAC checks (and potentially, prompts) - the client can stay in a Medium integrity level, while the server can run in High integrity level, intercept requests and act on the client's behalf.  
 As I previously mentioned - while this architecture allows for a great separation of functionality (only the things that need to run privileged - run privileged) - it's also an opportunity for various security issues.
 
+## Auto-elevated COM objects
+I've discussed auto-elevated COM objects [in a previous blogpost about UAC bypasses](https://github.com/yo-yo-yo-jbo/uac_bypasses/), but here I will expand a bit more.  
+There's an important distinction between an elevation-enabled COM object and an auto-elevated COM object - an elevation-enabled object supports activation with higher privileges, while an **auto-elevated object** can, under specific circumstances, be activated with higher privileges without displaying a UAC consent prompt.  
+Windows uses auto-elevation for selected system components to reduce unnecessary UAC prompts during legitimate administrative tasks - if you remember the [Windows Vista](https://en.wikipedia.org/wiki/Windows_Vista) days and the prompt-hell that everyone had to endure - that's a main motivator for this design.  
+For example, Windows Explorer may need to perform a privileged file operation while otherwise running at Medium integrity.  
+Rather than elevating the entire `explorer.exe` process, Windows can delegate selected operations to privileged components.  
+Historically, the shell's `IFileOperation` functionality has been a prominent example of this design, and as a result - also a big target for UAC bypass techniques.  
+Silent auto-elevation depends on Windows-specific trust and policy checks, in addition to `Elevation\Enabled` in the registry (which is a precondition).  
+Windows also contains an implementation-specific registry location associated with COM auto-elevation approval under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\UAC\COMAutoApprovalList`.  
+This matters for security exactly for the reason I have previously described - a low-privilege (or low**er** privileged) context somehow gaining the ability to invoke methods in a high-privileged COM server on its behalf, with the methods somehow affecting the security state of the entire system.  
+One important technique you might see in UAC bypasses exactly mitigates one of the UAC policy checks I've mentioned - specifically, COM checks the identity of the caller before activating an auto-elevated COM object, and if the identity does not match an expected identity - a UAC prompt would appear.  
+That technique is called `PEB masquerading`.
+
+### PEB masquerading
