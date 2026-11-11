@@ -1,7 +1,8 @@
 # Windows COM and CVE-2026-97793
 In this blogpost I'm going to discuss something I've been meaning to write about for a long time - Windows COM, in a nutshell.  
 I will explain what COM is, how it works fundamentally, how attackers might use it and even discuss [CVE-2026-97793](https://nvd.nist.gov/vuln/detail/cve-2026-97793) which is a vulnerability I accidentally found (while looking for something else).  
-Of course, this topic should not be confused with old DOS COM files, which I [have previously covered](https://github.com/yo-yo-yo-jbo/binary_golf_com/).
+Of course, this topic should not be confused with old DOS COM files, which I [have previously covered](https://github.com/yo-yo-yo-jbo/binary_golf_com/).  
+Note that I will also not talk about COM from a pure developer perspective - there are numerous heavy books on the subject, and I don't claim to know everything about COM myself.
 
 ## History and motivation
 The [Component Object Model (COM)](https://en.wikipedia.org/wiki/Component_Object_Model) is one of the oldest and most fundamental technologies in Windows.  
@@ -169,3 +170,29 @@ The distinction between DLL-based and executable-based COM servers is not absolu
 However, what happens if we have a COM server implemented in a DLL, and it should be loaded as an out-of-process COM server?  
 For that purpose, Windows supports **DLL surrogates**, which provide a process in which a COM DLL can execute without being loaded into the original client.  
 The most recognizable example is `dllhost.exe` - in modern Windows system would have several of these running at any given moment.
+
+## COM activation
+Now that we understand the execution models, let's look at how Windows identifies and activates a COM class.  
+Most traditional COM classes are registered in the Windows Registry. For example:
+
+```
+HKEY_CLASSES_ROOT
+  CLSID
+    {1423dadc-7fcf-41de-8219-5b28eb52860d}
+      InprocServer32
+        (Default) = C:\Example\Server.dll
+        ThreadingModel = Both
+```
+
+This entry tells COM that `C:\Example\Server.dll` implements the class with the GUID CLSID of `{1423dadc-7fcf-41de-8219-5b28eb52860d}` (this is just a random GUID I created).  
+An out-of-process server might instead be registered as:  
+
+```
+HKEY_CLASSES_ROOT
+  CLSID
+    {f1ea609d-cb6d-4fa8-a316-10a2f93db2f5}
+      LocalServer32
+        (Default) = C:\Example\Server.exe
+```
+
+Note, as I mentioned, that an out-of-process COM server can live happily in its own executable too.
