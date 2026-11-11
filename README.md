@@ -279,3 +279,43 @@ For vulnerability researchers, these mechanisms introduce several areas worth ex
 - Reentrancy during cross-apartment calls.
 - Incorrect validation of data crossing process boundaries.
 - Vulnerabilities in custom marshaling implementations.
+
+I won't elaborate on any of those for now - maybe in a future blogpost.
+
+## COM security
+COM security is more complicated than simply checking whether a caller is an administrator.  
+At a high level, two different questions must be answered:
+- Can the caller activate the COM server?
+- Can the caller invoke methods on the resulting object?
+
+Interestingly, these questions correspond to different security controls.
+
+### Launch and activation permissions
+COM can use launch and activation permissions to control which security principals are allowed to start or activate a particular server.  
+These permissions are typically associated with `AppID` configuration.  
+A server might allow ordinary users to activate its classes even though the server runs under a privileged account.
+
+### Access permissions
+Separately, COM access permissions control whether callers can make calls into the server.  
+An application can establish process-wide security settings using [CoInitializeSecurity](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity), and, in fact, clients can also configure security on individual COM proxies using [CoSetProxyBlanket](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cosetproxyblanket).  
+These settings influence authentication, impersonation, and access checks for applicable COM calls.
+
+### Impersonation
+COM allows servers to impersonate their clients.  
+For example, let's imagine a privileged server that receives a request from an unprivileged process.  
+Rather than performing the operation under its own privileged identity, the server may impersonate the caller while accessing a resource:
+
+```c++
+CoImpersonateClient();
+
+// Perform an operation under the impersonated client's security context
+
+CoRevertToSelf();
+```
+
+The ability to impersonate depends on the negotiated security settings and impersonation level.  
+However, impersonation is not automatic for every COM method, nor does it replace explicit authorization.  
+A privileged server performing sensitive operations under its own identity must ensure callers are authorized to request those operations.  
+This becomes especially important when examining elevated COM objects.
+
+## Elevated COM objects
