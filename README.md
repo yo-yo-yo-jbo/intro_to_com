@@ -163,3 +163,9 @@ From the client's perspective, invoking a method might still look like an ordina
 On Windows, local COM communication is built on [RPC](https://en.wikipedia.org/wiki/Remote_procedure_call) infrastructure, commonly using local RPC transport mechanisms backed by [ALPC](https://en.wikipedia.org/wiki/Local_Inter-Process_Communication).  
 Crucially, **the server is not required to execute with the same privileges as its caller** - its security context is determined by how the server was launched or configured, including its process identity and activation settings.  
 For example, a COM server running as SYSTEM, might be accessible to a client running as a standard user, provided the relevant permissions allow it. Of course, this is very interesting from a security research perspective - IPC were always a weak link, and if the server does not validate the client well and performs sensitive operations on its behalf, the results could be quite bad (e.g. a local privilege escalation vulnerability).
+
+### DLL surrogates
+The distinction between DLL-based and executable-based COM servers is not absolute - COM can be hosted in any executable, but traditionally you'd see many more cases of COM DLLs, due to how convenient it is to load a DLL to an appropriate process and benefiting from the natural security of process separation.  
+However, what happens if we have a COM server implemented in a DLL, and it should be loaded as an out-of-process COM server?  
+For that purpose, Windows supports **DLL surrogates**, which provide a process in which a COM DLL can execute without being loaded into the original client.  
+The most recognizable example is `dllhost.exe` - in modern Windows system would have several of these running at any given moment.
