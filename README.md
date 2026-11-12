@@ -44,7 +44,7 @@ That table contains entries for all virtual functions, and may look like the fol
 | Offset | Size (bytes) | Content   |
 | ------ | ------------ | --------- |
 | 0      | 8            | makeSound |
-| 8      | 8            | d'tor     |
+| 16     | 8            | d'tor     |
 
 When we perform `animal.makeSound();`, the compiled code would perform an indirect call in offset 0. Here's how `main` looks like after compilation (Linux, x86_64):
 
