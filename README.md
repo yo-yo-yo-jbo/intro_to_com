@@ -391,4 +391,20 @@ Note this is also an interesting data-point for defenders - monitoring changes t
 
 ## What was the deal with CVE-2026-97793
 Recently I've tried to get back into Windows research (while still maintaining "acceptable" skills in Linux, macOS and mobile platforms).  
-So, I've decided as a challenge to find a new UAC bypass, and started assessing COM objects, just like I previously described.
+So, I've decided as a challenge to find a new UAC bypass, and started assessing COM objects, just like I previously described.  
+I ended up finding a process called `CloudExperienceHostBroker.exe`, which starts by a scheduled task `\Microsoft\Windows\CloudExperienceHost\CreateObjectTask` - that process runs as `SYSTEM` and exposes a COM factory `ICreateObject::CreateInstance`. That method creates allowlisted classes **inside the SYSTEM broker process** and marshals them back to the caller.  
+The authentication check validates a "machine state" which roughly translates to "is a user-OOBE/provisioning window open?" - but never the caller.  
+Indeed - no integrity level checks, no token, identity or process checks - nothing.  
+Any Medium integrity level process of any interactive user could therefore obtain `SYSTEM`-hosted objects of a plethora of allowlisted classes.  
+One of these classes, `ProvOperationsCleanContext` (implemented in `provops.dll`) returns an interface of type `IProvOperations`.  
+This is a provisioning-package engine, and can essentially install these packages, that might include `ProvisioningCommands`, which, as you might guess - would run arbitrary commands by the provisioning engine. For those who are curious, the names of the relevant methods exported by `IProvOperations` are `AddPkg` and `ApplyKnownPackages`.  
+
+### Some internals
+The validation, in detail, seemed to be:
+1. The requested `CLSID` from the COM factory must be under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CloudExperienceHost\Broker\ElevatedClsids` - there were roughly 40 classes there, so, a large selection of those class IDs.
+2. The broker executable loads a "broker context" class in `C:\Windows\System32\oobe\UserOOBE.dll`, invokes [CoImpersonateClient](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coimpersonateclient) (remember how we mentioned impersonation?) and then calls the context's permissions checks **with no arguments**.
+3. The check returns `S_OK` if and only if `HKLM\Software\Microsoft\Windows\CurrentVersion\OOBE` key has a value called `LaunchUserOOBE` and its value is not 0. This is the most annoying check as a regular user cannot force this to happen, but it happens during Windows updates, so while it's not something one can trigger - an attacker could still wait for it.
+4. Assuming the check passes, `CoCreateInstance(clsid, CLSCTX_INPROC_SERVER)` is invoked in the system process, and the interface gets marshaled via COM and returned successfully to the calling client.
+
+It's also important to note that the scheduled task that starts the broker could be triggered by any interactive user.  
+As for the package installer interface, it'd install arbitrary [ppkg files](https://learn.microsoft.com/en-us/windows/configuration/provisioning-packages/provisioning-packages), which, as I mentioned, could include commands that would run in the broker's context.
