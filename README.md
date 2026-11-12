@@ -371,3 +371,19 @@ One important technique you might see in UAC bypasses exactly mitigates one of t
 That technique is called `PEB masquerading`.
 
 ### PEB masquerading
+I've discussed the idea of the [Process Environment Block (PEB)](https://en.wikipedia.org/wiki/Process_Environment_Block) in past blogposts - one about [shellcoding](https://github.com/yo-yo-yo-jbo/msf_shellcode_analysis/) and the other was about [commandline spoofing](https://github.com/yo-yo-yo-jbo/commandline_spoofing/), but as a reminder - the `PEB` is a data structure that exists in the userland process address space, and contains information about the process that would be cheaper (in terms of performance) to fetch when needed - the alternative would be performing an expensive system call.  
+The `PEB` contains interesting information such as (not a complete list):
+- The process image path (`PEB->ProcessParameters->ImagePathName`).
+- The process commandline string (`PEB->ProcessParameters->CommandLine`).
+- The set of loaded modules (`PEB->Ldr`). Note each module itself is a data structure of type `LDR_DATA_TABLE_ENTRY`, and has data such as the DLL path (`LDR_DATA_TABLE_ENTRY->FullDllName` and the base name (`LDR_DATA_TABLE_ENTRY->BaseDllName`).
+
+Because the PEB resides in the process’s own address space, modifying it is quite straightforward.  
+Well, it turns out that when COM tries to check the identity of the caller, in some situations (such as with **auto-elevated COM objects**), the validation also contains checks on the caller's image path, and as we know - that can be spoofed. Specifically, COM seems to use [NtQueryInformationProcess](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryinformationprocess) which eventually reads the `PEB`, and compares various returned fields to the expected `explorer.exe`.  
+Remark: another technique that an attacker can do is [inject](https://github.com/yo-yo-yo-jbo/injection_and_hooking_intro/) into `explorer.exe` with various techniques, but injection is quite noisy and is usually avoided in UAC bypass techniques.  
+So, you might find code in public UAC bypass repositories (e.g. [UACME](https://github.com/hfiref0x/uacme)) that perform the following:
+- Change the `PEB->ProcessParameters->ImagePathName` to point to `C:\Windows\System32\Explorer.exe`.
+- Change the `PEB->ProcessParameters->CommandLine` to `"C:\Windows\System32\Explorer.exe"`.
+- Change the `PEB->Ldr[0].FullDllName` to `C:\Windows\System32\Explorer.exe`.
+- Change the `PEB->Ldr[0].BaseDllName` to `Explorer.exe`.
+
+This way, when trying to activate an auto-elevated COM object, that part of the check passes and a UAC prompt doesn't pop.
