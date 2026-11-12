@@ -408,3 +408,11 @@ The validation, in detail, seemed to be:
 
 It's also important to note that the scheduled task that starts the broker could be triggered by any interactive user.  
 As for the package installer interface, it'd install arbitrary [ppkg files](https://learn.microsoft.com/en-us/windows/configuration/provisioning-packages/provisioning-packages), which, as I mentioned, could include commands that would run in the broker's context.
+
+## Summary
+This blogpost might look long, but in fact, it's only the tip of the iceberg about COM - just enough to get started, some security aspects, but there's really more to be said.  
+I might do a follow-up blogpost someday.
+
+Stay tuned!
+
+Jonathan Bar Or (https://jonathanbaror.com)
