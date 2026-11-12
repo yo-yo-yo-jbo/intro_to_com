@@ -386,4 +386,9 @@ So, you might find code in public UAC bypass repositories (e.g. [UACME](https://
 - Change the `PEB->Ldr[0].FullDllName` to `C:\Windows\System32\Explorer.exe`.
 - Change the `PEB->Ldr[0].BaseDllName` to `Explorer.exe`.
 
-This way, when trying to activate an auto-elevated COM object, that part of the check passes and a UAC prompt doesn't pop.
+This way, when trying to activate an auto-elevated COM object, that part of the check passes and a UAC prompt doesn't pop.  
+Note this is also an interesting data-point for defenders - monitoring changes the a process's PEB (especially when activating an auto-elevated COM object).
+
+## What was the deal with CVE-2026-97793
+Recently I've tried to get back into Windows research (while still maintaining "acceptable" skills in Linux, macOS and mobile platforms).  
+So, I've decided as a challenge to find a new UAC bypass, and started assessing COM objects, just like I previously described.
